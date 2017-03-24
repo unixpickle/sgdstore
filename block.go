@@ -56,7 +56,7 @@ func DeserializeBlock(d []byte) (block *Block, err error) {
 func (b *Block) Start(n int) anyrnn.State {
 	res := &State{
 		Creator:    b.Parameters()[0].Vector.Creator(),
-		ParamSizes: make([]int, len(b.Parameters())),
+		ParamSizes: make([]int, len(b.InitParams)),
 		Params:     make([][]anyvec.Vector, n),
 	}
 	for i, p := range b.InitParams {
