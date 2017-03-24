@@ -18,13 +18,15 @@ func TestNetApply(t *testing.T) {
 		anynet.Tanh,
 		anynet.NewFC(c, 4, 2),
 	}
-	var virtualNet Net
+
+	var netParams []anydiff.Res
 	for i := 0; i < len(realNet); i += 2 {
 		fc := realNet[i].(*anynet.FC)
 		anyvec.Rand(fc.Biases.Vector, anyvec.Normal, nil)
-		virtualNet.Weights = append(virtualNet.Weights, fc.Weights)
-		virtualNet.Biases = append(virtualNet.Biases, fc.Biases)
+		netParams = append(netParams, fc.Weights, fc.Biases)
 	}
+	virtualNet := &Net{Parameters: anydiff.Fuse(netParams...)}
+
 	inVec := c.MakeVector(12)
 	anyvec.Rand(inVec, anyvec.Normal, nil)
 	input := anydiff.NewVar(inVec)
