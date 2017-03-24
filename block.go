@@ -32,6 +32,57 @@ type Block struct {
 	Steps int
 }
 
+// LinearBlock creates a Block with linear gates.
+//
+// The blockIn argument specifies the input size for the
+// block.
+//
+// The trainBatch and queryBatch arguments specify the
+// batch sizes to use for training and querying,
+// respectively.
+//
+// The numSteps argument specifies the number of training
+// steps to take at each timestep.
+//
+// The layerSizes specify the sizes of the layers at every
+// point in the network.
+// The first layer corresponds to the network's input, and
+// the last to the network's output.
+// Thus, there must be at least two layer sizes.
+//
+// The block's output size can be computed as
+//
+//     queryBatch * layerSizes[len(layerSizes)-1]
+//
+func LinearBlock(c anyvec.Creator, blockIn, trainBatch, queryBatch, numSteps int,
+	layerSizes ...int) *Block {
+	if len(layerSizes) < 2 {
+		panic("not enough layer sizes")
+	} else if trainBatch < 1 || queryBatch < 1 {
+		panic("invalid batch size")
+	}
+
+	res := &Block{
+		TrainInput: anynet.NewFC(c, blockIn, trainBatch*layerSizes[0]),
+		TrainTarget: anynet.Net{
+			anynet.NewFC(c, blockIn, trainBatch*layerSizes[len(layerSizes)-1]),
+			anynet.Tanh,
+		},
+		StepSize: anynet.NewFC(c, blockIn, 1),
+		Query:    anynet.NewFC(c, blockIn, queryBatch*layerSizes[0]),
+		Steps:    numSteps,
+	}
+
+	layerSize := layerSizes[0]
+	for _, size := range layerSizes[1:] {
+		fc := anynet.NewFC(c, layerSize, size)
+		layerSize = size
+		res.InitParams = append(res.InitParams, fc.Parameters()...)
+	}
+
+	return res
+}
+
 // DeserializeBlock deserializes a Block.
 func DeserializeBlock(d []byte) (block *Block, err error) {
 	defer essentials.AddCtxTo("deserialize sgdstore.Block", &err)
