@@ -20,22 +20,26 @@ func TestBlockGradients(t *testing.T) {
 			anydiff.NewVar(anyvec64.MakeVector(4 * 2)),
 			anydiff.NewVar(anyvec64.MakeVector(2)),
 		},
-		TrainInput: anynet.NewFC(c, 3, 4),
+		TrainInput: anynet.NewFC(c, 3, 4*2),
 		TrainTarget: anynet.Net{
-			anynet.NewFC(c, 3, 4),
+			anynet.NewFC(c, 3, 2*2),
 			anynet.Tanh,
 		},
 		StepSize: anynet.Net{
 			anynet.NewFC(c, 3, 1),
 			anynet.Exp,
 		},
-		Query: anynet.NewFC(c, 3, 4),
+		Query: anynet.NewFC(c, 3, 4*2),
+		Steps: 1,
 	}
 	if len(block.Parameters()) != 10 {
 		t.Errorf("expected 10 parameters, but got %d", len(block.Parameters()))
 	}
 	for _, param := range block.Parameters() {
 		anyvec.Rand(param.Vector, anyvec.Normal, nil)
+		// Prevent gradient explosion, which causes the tests to
+		// fail because of bad approximations.
+		param.Vector.Scale(c.MakeNumeric(0.5))
 	}
 	checker := &anydifftest.SeqChecker{
 		F: func() anyseq.Seq {

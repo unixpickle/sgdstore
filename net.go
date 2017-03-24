@@ -105,6 +105,10 @@ func applyBackprop(params []anydiff.Res, in, target anydiff.Res,
 		scaler := target.Output().Creator().MakeNumeric(
 			2 / float64(target.Output().Len()),
 		)
+		if target.Output().Len() != in.Output().Len() {
+			panic(fmt.Sprintf("target length %d (expected %d)", target.Output().Len(),
+				in.Output().Len()))
+		}
 		return anydiff.Fuse(anydiff.Scale(anydiff.Sub(target, in), scaler))
 	}
 	weights, biases := params[0], params[1]
