@@ -26,6 +26,10 @@ type Block struct {
 	TrainTarget anynet.Layer
 	StepSize    anynet.Layer
 	Query       anynet.Layer
+
+	// Steps is the number of SGD steps to take at each
+	// timestep.
+	Steps int
 }
 
 // DeserializeBlock deserializes a Block.
@@ -34,7 +38,7 @@ func DeserializeBlock(d []byte) (block *Block, err error) {
 	var savedVecs []serializer.Serializer
 	block = &Block{}
 	err = serializer.DeserializeAny(d, &savedVecs, &block.TrainInput, &block.TrainTarget,
-		&block.StepSize, &block.Query)
+		&block.StepSize, &block.Query, &block.Steps)
 	if err != nil {
 		return nil, err
 	}
@@ -76,6 +80,58 @@ func (b *Block) PropagateStart(s anyrnn.StateGrad, g anydiff.Grad) {
 	}
 }
 
+// Step evaluates the block.
+func (b *Block) Step(s anyrnn.State, in anyvec.Vector) anyrnn.Res {
+	state := s.(*State)
+	inPool := anydiff.NewVar(in)
+	netPool := state.pool()
+	present := state.Present()
+	n := present.NumPresent()
+	gateOuts := b.applyGates(inPool, n)
+
+	var outVecs []anyvec.Vector
+	outParamVecs := make([][]anyvec.Vector, len(present))
+
+	allRes := anydiff.PoolMulti(gateOuts, func(gateOuts []anydiff.Res) anydiff.MultiRes {
+		var outParts []anydiff.MultiRes
+		var i int
+		for lane := 0; lane < len(present); lane++ {
+			if !present[lane] {
+				continue
+			}
+			trainIn, trainTarg := gateOuts[i], gateOuts[i+n]
+			step, query := gateOuts[i+2*n], gateOuts[i+3*n]
+			var reses []anydiff.Res
+			for _, v := range netPool[lane] {
+				reses = append(reses, v)
+			}
+			net := &Net{Parameters: anydiff.Fuse(reses...)}
+			out := b.applyNet(trainIn, trainTarg, step, query, net)
+			outParts = append(outParts, out)
+			outVecs = append(outVecs, out.Outputs()[0])
+			outParamVecs[lane] = out.Outputs()[1:]
+			i++
+		}
+		return anydiff.FuseMulti(outParts...)
+	})
+
+	newState := &State{
+		Creator:    state.Creator,
+		ParamSizes: state.ParamSizes,
+		Params:     outParamVecs,
+	}
+	v := anydiff.NewVarSet(b.Parameters()...)
+
+	return &blockRes{
+		InPool:   inPool,
+		NetPools: netPool,
+		OutVec:   state.Creator.Concat(outVecs...),
+		OutState: newState,
+		AllRes:   allRes,
+		V:        v,
+	}
+}
+
 // Parameters returns the block's parameters, including
 // the parameters of the gates.
 func (b *Block) Parameters() []*anydiff.Var {
@@ -101,7 +157,38 @@ func (b *Block) Serialize() ([]byte, error) {
 		b.TrainTarget,
 		b.StepSize,
 		b.Query,
+		b.Steps,
 	)
+}
+
+// applyGates returns a vector of the form:
+//
+//     [
+//         trainIn1, ..., trainInN,
+//         trainTarget1, ..., trainTargetN,
+//         step1, ..., stepN,
+//         query1, ..., queryN,
+//     ]
+//
+func (b *Block) applyGates(x anydiff.Res, n int) anydiff.MultiRes {
+	gates := []anynet.Layer{b.TrainInput, b.TrainTarget, b.StepSize, b.Query}
+	var split []anydiff.MultiRes
+	for _, gate := range gates {
+		split = append(split, splitRes(gate.Apply(x, n), n))
+	}
+	return anydiff.FuseMulti(split...)
+}
+
+// applyNet trains and applies a network and returns a
+// tuple of the form: [queryOut, newParam1, ...].
+func (b *Block) applyNet(in, target, step, query anydiff.Res, net *Net) anydiff.MultiRes {
+	batchSize := in.Output().Len() / net.InSize()
+	newNet := net.Train(in, target, step, batchSize, b.Steps).Parameters
+	return anydiff.PoolMulti(newNet, func(params []anydiff.Res) anydiff.MultiRes {
+		newNet := &Net{Parameters: anydiff.Fuse(params...)}
+		queryRes := newNet.Apply(query, query.Output().Len()/net.InSize())
+		return anydiff.Fuse(append([]anydiff.Res{queryRes}, params...)...)
+	})
 }
 
 // State is the anyrnn.State and anyrnn.StateGrad type for
@@ -155,4 +242,117 @@ func (s *State) Expand(p anyrnn.PresentMap) anyrnn.StateGrad {
 		ParamSizes: s.ParamSizes,
 		Params:     expanded,
 	}
+}
+
+func (s *State) pool() [][]*anydiff.Var {
+	res := make([][]*anydiff.Var, len(s.Params))
+	for i, vecs := range s.Params {
+		if vecs == nil {
+			continue
+		}
+		for _, vec := range vecs {
+			p := anydiff.NewVar(vec)
+			res[i] = append(res[i], p)
+		}
+	}
+	return res
+}
+
+type blockRes struct {
+	InPool   *anydiff.Var
+	NetPools [][]*anydiff.Var
+	OutVec   anyvec.Vector
+	OutState *State
+	AllRes   anydiff.MultiRes
+	V        anydiff.VarSet
+}
+
+func (b *blockRes) State() anyrnn.State {
+	return b.OutState
+}
+
+func (b *blockRes) Output() anyvec.Vector {
+	return b.OutVec
+}
+
+func (b *blockRes) Vars() anydiff.VarSet {
+	return b.V
+}
+
+func (b *blockRes) Propagate(u anyvec.Vector, s anyrnn.StateGrad,
+	g anydiff.Grad) (anyvec.Vector, anyrnn.StateGrad) {
+	n := b.OutState.Present().NumPresent()
+	uSliceLen := u.Len() / n
+	allUpstream := make([]anyvec.Vector, len(b.AllRes.Outputs()))
+	vecsPerLane := len(allUpstream) / n
+	for i := 0; i < n; i++ {
+		uSlice := u.Slice(i*uSliceLen, (i+1)*uSliceLen)
+		allUpstream[i*vecsPerLane] = uSlice
+	}
+	if s == nil {
+		for i, x := range allUpstream {
+			if x == nil {
+				size := b.AllRes.Outputs()[i].Len()
+				allUpstream[i] = u.Creator().MakeVector(size)
+			}
+		}
+	} else {
+		sg := s.(*State)
+		present := sg.Present()
+		var i int
+		for lane, vecs := range sg.Params {
+			if !present[lane] {
+				continue
+			}
+			for j, vec := range vecs {
+				allUpstream[1+i*vecsPerLane+j] = vec
+			}
+			i++
+		}
+	}
+
+	for _, p := range b.pools() {
+		g[p] = p.Vector.Creator().MakeVector(p.Vector.Len())
+		defer delete(g, p)
+	}
+
+	b.AllRes.Propagate(allUpstream, g)
+
+	paramGrad := make([][]anyvec.Vector, len(b.NetPools))
+	for i, netPool := range b.NetPools {
+		if netPool == nil {
+			continue
+		}
+		paramGrad[i] = make([]anyvec.Vector, len(netPool))
+		for j, x := range netPool {
+			paramGrad[i][j] = g[x]
+		}
+	}
+
+	return g[b.InPool], &State{
+		Creator:    b.OutState.Creator,
+		ParamSizes: b.OutState.ParamSizes,
+		Params:     paramGrad,
+	}
+}
+
+func (b *blockRes) pools() []*anydiff.Var {
+	res := []*anydiff.Var{b.InPool}
+	for _, list := range b.NetPools {
+		for _, v := range list {
+			res = append(res, v)
+		}
+	}
+	return res
+}
+
+func splitRes(r anydiff.Res, n int) anydiff.MultiRes {
+	return anydiff.PoolFork(r, func(r anydiff.Res) anydiff.MultiRes {
+		chunkSize := r.Output().Len() / n
+		var reses []anydiff.Res
+		for i := 0; i < n; i++ {
+			reses = append(reses, anydiff.Slice(r, i*chunkSize, (i+1)*chunkSize))
+		}
+		return anydiff.Fuse(reses...)
+	})
 }

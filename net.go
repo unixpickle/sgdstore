@@ -15,6 +15,8 @@ type Net struct {
 	// Each even index corresponds to a weight matrix.
 	// Each odd index corresponds to a bias vector.
 	// Matrices are row-major.
+	//
+	// This should not be empty.
 	Parameters anydiff.MultiRes
 }
 
@@ -30,6 +32,15 @@ func (n *Net) Apply(inBatch anydiff.Res, batchSize int) anydiff.Res {
 		}
 		return inBatch
 	})
+}
+
+// InSize calculates the input size of the network using
+// the dimensions of the first layer.
+func (n *Net) InSize() int {
+	if len(n.Parameters.Outputs()) < 2 {
+		panic("network cannot be empty")
+	}
+	return n.Parameters.Outputs()[0].Len() / n.Parameters.Outputs()[1].Len()
 }
 
 // Train performs SGD training on the batch.
