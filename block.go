@@ -68,9 +68,12 @@ func LinearBlock(c anyvec.Creator, blockIn, trainBatch, queryBatch, numSteps int
 			anynet.NewFC(c, blockIn, trainBatch*layerSizes[len(layerSizes)-1]),
 			anynet.Tanh,
 		},
-		StepSize: anynet.NewFC(c, blockIn, 1),
-		Query:    anynet.NewFC(c, blockIn, queryBatch*layerSizes[0]),
-		Steps:    numSteps,
+		StepSize: anynet.Net{
+			anynet.NewFC(c, blockIn, 1),
+			anynet.Exp,
+		},
+		Query: anynet.NewFC(c, blockIn, queryBatch*layerSizes[0]),
+		Steps: numSteps,
 	}
 
 	layerSize := layerSizes[0]
