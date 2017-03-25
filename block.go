@@ -367,7 +367,9 @@ func (b *blockRes) Propagate(u anyvec.Vector, s anyrnn.StateGrad,
 
 	for _, p := range b.pools() {
 		g[p] = p.Vector.Creator().MakeVector(p.Vector.Len())
-		defer delete(g, p)
+		defer func(g anydiff.Grad, p *anydiff.Var) {
+			delete(g, p)
+		}(g, p)
 	}
 
 	b.AllRes.Propagate(allUpstream, g)
