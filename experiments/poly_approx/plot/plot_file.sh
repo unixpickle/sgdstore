@@ -1,5 +1,7 @@
 #!/bin/bash
 
+echo 'Creating plot_file.m ...'
+
 TO_MATLAB="./log_to_matlab.sh"
 $TO_MATLAB ../log/sgdstore_1step.txt >plot_file.m
 $TO_MATLAB ../log/sgdstore_2step.txt >>plot_file.m
