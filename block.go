@@ -89,10 +89,14 @@ func LinearBlock(c anyvec.Creator, blockIn, trainBatch, queryBatch, numSteps int
 // DeserializeBlock deserializes a Block.
 func DeserializeBlock(d []byte) (block *Block, err error) {
 	defer essentials.AddCtxTo("deserialize sgdstore.Block", &err)
-	var savedVecs []serializer.Serializer
+	var vecData []byte
 	block = &Block{}
-	err = serializer.DeserializeAny(d, &savedVecs, &block.TrainInput, &block.TrainTarget,
+	err = serializer.DeserializeAny(d, &vecData, &block.TrainInput, &block.TrainTarget,
 		&block.StepSize, &block.Query, &block.Steps)
+	if err != nil {
+		return nil, err
+	}
+	savedVecs, err := serializer.DeserializeSlice(vecData)
 	if err != nil {
 		return nil, err
 	}
@@ -205,8 +209,12 @@ func (b *Block) Serialize() ([]byte, error) {
 	for _, v := range b.InitParams {
 		savedVecs = append(savedVecs, &anyvecsave.S{Vector: v.Vector})
 	}
+	vecData, err := serializer.SerializeSlice(savedVecs)
+	if err != nil {
+		return nil, err
+	}
 	return serializer.SerializeAny(
-		savedVecs,
+		serializer.Bytes(vecData),
 		b.TrainInput,
 		b.TrainTarget,
 		b.StepSize,
