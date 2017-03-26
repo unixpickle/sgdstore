@@ -21,13 +21,16 @@ func main() {
 	var sgdSteps int
 
 	flag.IntVar(&batchSize, "batch", 16, "SGD batch size")
-	flag.Float64Var(&stepSize, "step", 0.001, "SGD step size")
+	flag.Float64Var(&stepSize, "step", 0.0003, "SGD step size")
 	flag.StringVar(&modelName, "model", "sgdstore", "RNN type (sgdstore or lstm)")
 	flag.IntVar(&sgdSteps, "sgdsteps", 2, "SGD steps for sgdstore")
 
 	flag.Parse()
 
 	model := NewModel(modelName, sgdSteps)
+
+	log.Printf("Model has %d parameters.", CountParams(model))
+
 	samples := SampleList(batchSize)
 
 	trainer := &anys2s.Trainer{

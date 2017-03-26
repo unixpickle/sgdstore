@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"math"
 	"math/rand"
 
@@ -30,7 +29,6 @@ func (s SampleList) Creator() anyvec.Creator {
 
 func (s SampleList) GetSample(i int) (*anys2s.Sample, error) {
 	poly := RandomPoly()
-	fmt.Println(len(poly))
 
 	var sample anys2s.Sample
 	var lastValue float32

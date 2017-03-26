@@ -42,3 +42,11 @@ func NewModel(name string, sgdSteps int) anyrnn.Block {
 		panic("unreachable")
 	}
 }
+
+func CountParams(b anyrnn.Block) int {
+	var res int
+	for _, p := range anynet.AllParameters(b) {
+		res += p.Vector.Len()
+	}
+	return res
+}
