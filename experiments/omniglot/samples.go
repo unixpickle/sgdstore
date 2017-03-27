@@ -3,7 +3,6 @@ package main
 import (
 	"math/rand"
 
-	"github.com/nfnt/resize"
 	"github.com/unixpickle/anynet/anys2s"
 	"github.com/unixpickle/anynet/anysgd"
 	"github.com/unixpickle/anyvec"
@@ -51,13 +50,12 @@ func (s *Samples) GetSample(i int) (*anys2s.Sample, error) {
 	oneHot := make([]float64, s.NumClasses)
 	var inputs, outputs []anyvec.Vector
 	for i, sample := range samples {
-		img, err := sample.Image(s.Augment)
+		img, err := sample.Image(s.Augment, ImageSize)
 		if err != nil {
 			return nil, err
 		}
 		class := classes[i]
-		resized := resize.Resize(ImageSize, ImageSize, img, resize.Bilinear)
-		inVec := append(omniglot.Tensor(resized), oneHot...)
+		inVec := append(omniglot.Tensor(img), oneHot...)
 		oneHot = make([]float64, s.NumClasses)
 		oneHot[class] = 1
 		inputs = append(inputs, c.MakeVectorData(c.MakeNumericList(inVec)))
