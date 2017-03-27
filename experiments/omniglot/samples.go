@@ -48,6 +48,7 @@ func (s *Samples) Creator() anyvec.Creator {
 func (s *Samples) GetSample(i int) (*anys2s.Sample, error) {
 	c := s.Creator()
 	samples, classes := s.episode()
+	oneHot := make([]float64, s.NumClasses)
 	var inputs, outputs []anyvec.Vector
 	for i, sample := range samples {
 		img, err := sample.Image(s.Augment)
@@ -56,10 +57,10 @@ func (s *Samples) GetSample(i int) (*anys2s.Sample, error) {
 		}
 		class := classes[i]
 		resized := resize.Resize(ImageSize, ImageSize, img, resize.Bilinear)
-		tensor := omniglot.Tensor(resized)
-		oneHot := make([]float64, s.NumClasses)
+		inVec := append(omniglot.Tensor(resized), oneHot...)
+		oneHot = make([]float64, s.NumClasses)
 		oneHot[class] = 1
-		inputs = append(inputs, c.MakeVectorData(c.MakeNumericList(tensor)))
+		inputs = append(inputs, c.MakeVectorData(c.MakeNumericList(inVec)))
 		outputs = append(outputs, c.MakeVectorData(c.MakeNumericList(oneHot)))
 	}
 	return &anys2s.Sample{Input: inputs, Output: outputs}, nil
