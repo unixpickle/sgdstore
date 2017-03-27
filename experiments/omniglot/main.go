@@ -13,6 +13,7 @@ import (
 	"github.com/unixpickle/anynet/anyrnn"
 	"github.com/unixpickle/anynet/anys2s"
 	"github.com/unixpickle/anynet/anysgd"
+	"github.com/unixpickle/anyvec"
 	"github.com/unixpickle/essentials"
 	"github.com/unixpickle/omniglot"
 	"github.com/unixpickle/rip"
@@ -62,7 +63,11 @@ func main() {
 	}
 	training = training.Augment()
 
-	// TODO: load and use testing samples.
+	testing, err := omniglot.ReadSet(testingPath)
+	if err != nil {
+		essentials.Die(err)
+	}
+	testing = testing.Augment()
 
 	samples := &Samples{
 		Length:       batchSize,
@@ -71,6 +76,8 @@ func main() {
 		NumClasses:   numClasses,
 		NumTimesteps: episodeLen,
 	}
+	testSamples := *samples
+	testSamples.Sets = testing.ByClass()
 	trainer := &anys2s.Trainer{
 		Func: func(s anyseq.Seq) anyseq.Seq {
 			return anyrnn.Map(s, model)
@@ -89,7 +96,17 @@ func main() {
 		Samples:     samples,
 		BatchSize:   batchSize,
 		StatusFunc: func(b anysgd.Batch) {
-			log.Printf("iter %d: cost=%v", iter, trainer.LastCost)
+			if iter%4 == 0 {
+				batch, err := trainer.Fetch(&testSamples)
+				if err != nil {
+					essentials.Die(err)
+				}
+				cost := trainer.TotalCost(batch)
+				log.Printf("iter %d: cost=%v validation=%f", iter, trainer.LastCost,
+					anyvec.Sum(cost.Output()))
+			} else {
+				log.Printf("iter %d: cost=%v", iter, trainer.LastCost)
+			}
 			iter++
 		},
 	}
