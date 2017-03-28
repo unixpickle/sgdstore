@@ -12,9 +12,14 @@ import (
 func NewModel(name string, sgdSteps, outCount int) anyrnn.Block {
 	c := anyvec32.CurrentCreator()
 
+	normInput := &anyrnn.LayerBlock{
+		Layer: anynet.NewAffine(c, 4, -0.92*4),
+	}
+
 	switch name {
 	case "sgdstore":
 		return anyrnn.Stack{
+			normInput,
 			&anyrnn.Feedback{
 				InitOut: anydiff.NewVar(c.MakeVector(512)),
 				Mixer:   anynet.ConcatMixer{},
@@ -39,9 +44,7 @@ func NewModel(name string, sgdSteps, outCount int) anyrnn.Block {
 		}
 	case "lstm":
 		return anyrnn.Stack{
-			&anyrnn.LayerBlock{
-				Layer: anynet.NewAffine(c, 4, -0.92*4),
-			},
+			normInput,
 			anyrnn.NewLSTM(c, 400+outCount, 384),
 			anyrnn.NewLSTM(c, 384, 384).ScaleInWeights(c.MakeNumeric(2)),
 			&anyrnn.LayerBlock{
