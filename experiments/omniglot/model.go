@@ -42,11 +42,11 @@ func NewModel(name string, sgdSteps, outCount int) anyrnn.Block {
 			&anyrnn.LayerBlock{
 				Layer: anynet.NewAffine(c, 4, -0.92*4),
 			},
-			anyrnn.NewLSTM(c, 400+outCount, 512),
-			anyrnn.NewLSTM(c, 512, 512).ScaleInWeights(c.MakeNumeric(2)),
+			anyrnn.NewLSTM(c, 400+outCount, 384),
+			anyrnn.NewLSTM(c, 384, 384).ScaleInWeights(c.MakeNumeric(2)),
 			&anyrnn.LayerBlock{
 				Layer: anynet.Net{
-					anynet.NewFC(c, 512, outCount),
+					anynet.NewFC(c, 384, outCount),
 					anynet.LogSoftmax,
 				},
 			},
