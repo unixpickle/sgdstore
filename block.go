@@ -2,6 +2,7 @@ package sgdstore
 
 import (
 	"fmt"
+	"math"
 
 	"github.com/unixpickle/anydiff"
 	"github.com/unixpickle/anynet"
@@ -43,6 +44,8 @@ type Block struct {
 //
 // The numSteps argument specifies the number of training
 // steps to take at each timestep.
+// The lrBias argument specifies the approximate initial
+// learning rate (i.e. step size).
 //
 // The layerSizes specify the sizes of the layers at every
 // point in the network.
@@ -55,7 +58,7 @@ type Block struct {
 //     queryBatch * layerSizes[len(layerSizes)-1]
 //
 func LinearBlock(c anyvec.Creator, blockIn, trainBatch, queryBatch, numSteps int,
-	layerSizes ...int) *Block {
+	lrBias float64, layerSizes ...int) *Block {
 	if len(layerSizes) < 2 {
 		panic("not enough layer sizes")
 	} else if trainBatch < 1 || queryBatch < 1 {
@@ -69,7 +72,7 @@ func LinearBlock(c anyvec.Creator, blockIn, trainBatch, queryBatch, numSteps int
 			anynet.Tanh,
 		},
 		StepSize: anynet.Net{
-			anynet.NewFC(c, blockIn, 1),
+			anynet.NewFC(c, blockIn, 1).AddBias(c.MakeNumeric(math.Log(lrBias))),
 			anynet.Exp,
 		},
 		Query: anynet.NewFC(c, blockIn, queryBatch*layerSizes[0]),

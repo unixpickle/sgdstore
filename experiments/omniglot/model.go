@@ -32,7 +32,7 @@ func NewModel(name string, sgdSteps, outCount int) anyrnn.Block {
 							anynet.Tanh,
 						},
 					},
-					sgdstore.LinearBlock(c, 512, 4, 4, sgdSteps, 128, 256, 128),
+					sgdstore.LinearBlock(c, 512, 4, 4, sgdSteps, 0.1, 128, 256, 128),
 				},
 			},
 			&anyrnn.LayerBlock{

@@ -26,7 +26,7 @@ func NewModel(name string, sgdSteps int) anyrnn.Block {
 							anynet.Tanh,
 						},
 					},
-					sgdstore.LinearBlock(c, 32, 2, 2, sgdSteps, 16, 32, 16),
+					sgdstore.LinearBlock(c, 32, 2, 2, sgdSteps, 1, 16, 32, 16),
 				},
 			},
 			&anyrnn.LayerBlock{Layer: anynet.NewFC(c, 32, 1)},
