@@ -67,6 +67,54 @@ func TestNetTrain(t *testing.T) {
 	}
 }
 
+func TestNetBatched(t *testing.T) {
+	c := anyvec64.CurrentCreator()
+	_, net1 := randomNetwork(c)
+	_, net2 := randomNetwork(c)
+	joined := joinNets(net1, net2)
+
+	inBatch := anydiff.NewVar(c.MakeVector(3 * 5 * 2))
+	target := anydiff.NewVar(c.MakeVector(2 * 5 * 2))
+
+	anyvec.Rand(inBatch.Vector, anyvec.Normal, nil)
+
+	t.Run("Apply", func(t *testing.T) {
+		out1 := net1.Apply(anydiff.Slice(inBatch, 0, 3*5), 5).Output()
+		out2 := net2.Apply(anydiff.Slice(inBatch, 3*5, 3*5*2), 5).Output()
+		actual := joined.Apply(inBatch, 5).Output()
+		expected := c.Concat(out1, out2)
+		if actual.Len() != expected.Len() {
+			t.Error("length mismatch")
+			return
+		}
+		diff := expected.Copy()
+		diff.Sub(actual)
+		maxDiff := anyvec.AbsMax(diff)
+		if maxDiff.(float64) > 1e-4 {
+			t.Errorf("bad output: expected %v but got %v", expected, actual)
+		}
+	})
+
+	t.Run("Train", func(t *testing.T) {
+		stepSize := anydiff.NewVar(c.MakeVectorData([]float64{0.1}))
+		trained1 := net1.Train(anydiff.Slice(inBatch, 0, 3*5),
+			anydiff.Slice(target, 0, 2*5), stepSize, 5, 2)
+		trained2 := net2.Train(anydiff.Slice(inBatch, 3*5, 3*5*2),
+			anydiff.Slice(target, 2*5, 2*5*2), stepSize, 5, 2)
+		actual := joined.Train(inBatch, target, stepSize, 5, 2)
+		expected := joinNets(trained1, trained2)
+		for i, xParam := range expected.Parameters.Outputs() {
+			aParam := actual.Parameters.Outputs()[i]
+			diff := xParam.Copy()
+			diff.Sub(aParam)
+			maxDiff := anyvec.AbsMax(diff)
+			if maxDiff.(float64) > 1e-4 {
+				t.Errorf("bad training result: expected %v but got %v", xParam, aParam)
+			}
+		}
+	})
+}
+
 func BenchmarkNetwork(b *testing.B) {
 	c := anyvec32.CurrentCreator()
 	realNet := anynet.Net{
@@ -80,7 +128,7 @@ func BenchmarkNetwork(b *testing.B) {
 		}
 		netParams = append(netParams, param)
 	}
-	net := &Net{Parameters: anydiff.Fuse(netParams...)}
+	net := &Net{Parameters: anydiff.Fuse(netParams...), Num: 1}
 
 	inBatch := anydiff.NewVar(c.MakeVector(512))
 	target := anydiff.NewVar(c.MakeVector(512))
@@ -127,5 +175,20 @@ func randomNetwork(c anyvec.Creator) (anynet.Net, *Net) {
 		}
 		netParams = append(netParams, param)
 	}
-	return realNet, &Net{Parameters: anydiff.Fuse(netParams...)}
+	return realNet, &Net{Parameters: anydiff.Fuse(netParams...), Num: 1}
+}
+
+func joinNets(n1, n2 *Net) *Net {
+	return &Net{
+		Num: 2,
+		Parameters: anydiff.PoolMulti(n1.Parameters, func(p1 []anydiff.Res) anydiff.MultiRes {
+			return anydiff.PoolMulti(n2.Parameters, func(p2 []anydiff.Res) anydiff.MultiRes {
+				var reses []anydiff.Res
+				for i, x := range p1 {
+					reses = append(reses, anydiff.Concat(x, p2[i]))
+				}
+				return anydiff.Fuse(reses...)
+			})
+		}),
+	}
 }

@@ -166,7 +166,7 @@ func (b *Block) Step(s anyrnn.State, in anyvec.Vector) anyrnn.Res {
 			for _, v := range netPool[lane] {
 				reses = append(reses, v)
 			}
-			net := &Net{Parameters: anydiff.Fuse(reses...)}
+			net := &Net{Parameters: anydiff.Fuse(reses...), Num: 1}
 			out := b.applyNet(trainIn, trainTarg, step, query, net)
 			outParts = append(outParts, out)
 			outVecs = append(outVecs, out.Outputs()[0])
@@ -250,7 +250,7 @@ func (b *Block) applyNet(in, target, step, query anydiff.Res, net *Net) anydiff.
 	batchSize := in.Output().Len() / net.InSize()
 	newNet := net.Train(in, target, step, batchSize, b.Steps).Parameters
 	return anydiff.PoolMulti(newNet, func(params []anydiff.Res) anydiff.MultiRes {
-		newNet := &Net{Parameters: anydiff.Fuse(params...)}
+		newNet := &Net{Parameters: anydiff.Fuse(params...), Num: 1}
 		queryRes := newNet.Apply(query, query.Output().Len()/net.InSize())
 		return anydiff.Fuse(append([]anydiff.Res{queryRes}, params...)...)
 	})
