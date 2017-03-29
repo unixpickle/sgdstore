@@ -54,6 +54,9 @@ func (n *Net) InSize() int {
 // the caller.
 func (n *Net) Train(inBatch, target, stepSize anydiff.Res, batchSize,
 	numSteps int) *Net {
+	if stepSize.Output().Len() != n.Num {
+		panic("invalid stepSize length")
+	}
 	ins := anydiff.Fuse(inBatch, target, stepSize)
 	newParams := anydiff.PoolMulti(ins, func(s []anydiff.Res) anydiff.MultiRes {
 		inBatch, target, stepSize := s[0], s[1], s[2]
@@ -77,7 +80,12 @@ func (n *Net) step(inBatch, target, stepSize anydiff.Res, batchSize int) *Net {
 		return anydiff.PoolMulti(grad, func(grads []anydiff.Res) anydiff.MultiRes {
 			var newParams []anydiff.Res
 			for i, g := range grads[1:] {
-				p := anydiff.Add(params[i], anydiff.ScaleRepeated(g, stepSize))
+				gMat := &anydiff.Matrix{
+					Data: g,
+					Rows: n.Num,
+					Cols: g.Output().Len() / n.Num,
+				}
+				p := anydiff.Add(params[i], anydiff.ScaleRows(gMat, stepSize).Data)
 				newParams = append(newParams, p)
 			}
 			return anydiff.Fuse(newParams...)

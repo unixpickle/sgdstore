@@ -96,11 +96,11 @@ func TestNetBatched(t *testing.T) {
 	})
 
 	t.Run("Train", func(t *testing.T) {
-		stepSize := anydiff.NewVar(c.MakeVectorData([]float64{0.1}))
+		stepSize := anydiff.NewVar(c.MakeVectorData([]float64{0.1, 0.2}))
 		trained1 := net1.Train(anydiff.Slice(inBatch, 0, 3*5),
-			anydiff.Slice(target, 0, 2*5), stepSize, 5, 2)
+			anydiff.Slice(target, 0, 2*5), anydiff.Slice(stepSize, 0, 1), 5, 2)
 		trained2 := net2.Train(anydiff.Slice(inBatch, 3*5, 3*5*2),
-			anydiff.Slice(target, 2*5, 2*5*2), stepSize, 5, 2)
+			anydiff.Slice(target, 2*5, 2*5*2), anydiff.Slice(stepSize, 1, 2), 5, 2)
 		actual := joined.Train(inBatch, target, stepSize, 5, 2)
 		expected := joinNets(trained1, trained2)
 		for i, xParam := range expected.Parameters.Outputs() {
