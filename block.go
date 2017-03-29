@@ -115,16 +115,9 @@ func DeserializeBlock(d []byte) (block *Block, err error) {
 
 // Start produces a start state.
 func (b *Block) Start(n int) anyrnn.State {
-	res := &State{
-		Creator:    b.Parameters()[0].Vector.Creator(),
-		ParamSizes: make([]int, len(b.InitParams)),
-		Params:     make([][]anyvec.Vector, n),
-	}
+	res := &State{Params: make([]*anyrnn.VecState, len(b.InitParams))}
 	for i, p := range b.InitParams {
-		res.ParamSizes[i] = p.Vector.Len()
-		for j := range res.Params {
-			res.Params[j] = append(res.Params[j], p.Vector.Copy())
-		}
+		res.Params[i] = anyrnn.NewVecState(p.Vector, n)
 	}
 	return res
 }
@@ -132,12 +125,8 @@ func (b *Block) Start(n int) anyrnn.State {
 // PropagateStart propagates through the start state.
 func (b *Block) PropagateStart(s anyrnn.StateGrad, g anydiff.Grad) {
 	state := s.(*State)
-	for paramNum, p := range b.InitParams {
-		if grad, ok := g[p]; ok {
-			for _, netGrad := range state.Params {
-				grad.Add(netGrad[paramNum])
-			}
-		}
+	for i, paramVar := range b.InitParams {
+		state.Params[i].PropagateStart(paramVar, g)
 	}
 }
 
@@ -150,43 +139,42 @@ func (b *Block) Step(s anyrnn.State, in anyvec.Vector) anyrnn.Res {
 	n := present.NumPresent()
 	gateOuts := b.applyGates(inPool, n)
 
-	var outVecs []anyvec.Vector
-	outParamVecs := make([][]anyvec.Vector, len(present))
-
 	allRes := anydiff.PoolMulti(gateOuts, func(gateOuts []anydiff.Res) anydiff.MultiRes {
-		var outParts []anydiff.MultiRes
-		var i int
-		for lane := 0; lane < len(present); lane++ {
-			if !present[lane] {
-				continue
-			}
-			trainIn, trainTarg := gateOuts[i], gateOuts[i+n]
-			step, query := gateOuts[i+2*n], gateOuts[i+3*n]
-			var reses []anydiff.Res
-			for _, v := range netPool[lane] {
-				reses = append(reses, v)
-			}
-			net := &Net{Parameters: anydiff.Fuse(reses...), Num: 1}
-			out := b.applyNet(trainIn, trainTarg, step, query, net)
-			outParts = append(outParts, out)
-			outVecs = append(outVecs, out.Outputs()[0])
-			outParamVecs[lane] = out.Outputs()[1:]
-			i++
+		poolReses := make([]anydiff.Res, len(netPool))
+		for i, x := range netPool {
+			poolReses[i] = x
 		}
-		return anydiff.FuseMulti(outParts...)
+		net := &Net{
+			Parameters: anydiff.Fuse(poolReses...),
+			Num:        n,
+		}
+		batchSize := gateOuts[0].Output().Len() / (net.InSize() * n)
+		newNet := net.Train(gateOuts[0], gateOuts[1], gateOuts[2], batchSize, b.Steps)
+		return anydiff.PoolMulti(newNet.Parameters,
+			func(newParams []anydiff.Res) anydiff.MultiRes {
+				net1 := *newNet
+				net1.Parameters = anydiff.Fuse(newParams...)
+				applied := newNet.Apply(gateOuts[3], batchSize)
+				newReses := append([]anydiff.Res{applied}, newParams...)
+				return anydiff.Fuse(newReses...)
+			})
 	})
 
 	newState := &State{
-		Creator:    state.Creator,
-		ParamSizes: state.ParamSizes,
-		Params:     outParamVecs,
+		Params: make([]*anyrnn.VecState, len(state.Params)),
+	}
+	for i, newVec := range allRes.Outputs()[1:] {
+		newState.Params[i] = &anyrnn.VecState{
+			PresentMap: state.Params[i].PresentMap,
+			Vector:     newVec,
+		}
 	}
 	v := anydiff.NewVarSet(b.Parameters()...)
 
 	return &blockRes{
 		InPool:   inPool,
 		NetPools: netPool,
-		OutVec:   state.Creator.Concat(outVecs...),
+		OutVec:   allRes.Outputs()[0],
 		OutState: newState,
 		AllRes:   allRes,
 		V:        v,
@@ -228,104 +216,57 @@ func (b *Block) Serialize() ([]byte, error) {
 
 // applyGates returns a vector of the form:
 //
-//     [
-//         trainIn1, ..., trainInN,
-//         trainTarget1, ..., trainTargetN,
-//         step1, ..., stepN,
-//         query1, ..., queryN,
-//     ]
+//     [trainIn, trainTarget, step, query]
 //
 func (b *Block) applyGates(x anydiff.Res, n int) anydiff.MultiRes {
 	gates := []anynet.Layer{b.TrainInput, b.TrainTarget, b.StepSize, b.Query}
-	var split []anydiff.MultiRes
+	var outs []anydiff.Res
 	for _, gate := range gates {
-		split = append(split, splitRes(gate.Apply(x, n), n))
+		outs = append(outs, gate.Apply(x, n))
 	}
-	return anydiff.FuseMulti(split...)
-}
-
-// applyNet trains and applies a network and returns a
-// tuple of the form: [queryOut, newParam1, ...].
-func (b *Block) applyNet(in, target, step, query anydiff.Res, net *Net) anydiff.MultiRes {
-	batchSize := in.Output().Len() / net.InSize()
-	newNet := net.Train(in, target, step, batchSize, b.Steps).Parameters
-	return anydiff.PoolMulti(newNet, func(params []anydiff.Res) anydiff.MultiRes {
-		newNet := &Net{Parameters: anydiff.Fuse(params...), Num: 1}
-		queryRes := newNet.Apply(query, query.Output().Len()/net.InSize())
-		return anydiff.Fuse(append([]anydiff.Res{queryRes}, params...)...)
-	})
+	return anydiff.Fuse(outs...)
 }
 
 // State is the anyrnn.State and anyrnn.StateGrad type for
 // a Block.
 type State struct {
-	Creator    anyvec.Creator
-	ParamSizes []int
-	Params     [][]anyvec.Vector
+	Params []*anyrnn.VecState
 }
 
 // Present returns the present sequence map.
 func (s *State) Present() anyrnn.PresentMap {
-	m := make(anyrnn.PresentMap, len(s.Params))
-	for i, x := range s.Params {
-		if x != nil {
-			m[i] = true
-		}
-	}
-	return m
+	return s.Params[0].Present()
 }
 
 // Reduce removes states.
 func (s *State) Reduce(p anyrnn.PresentMap) anyrnn.State {
-	reduced := make([][]anyvec.Vector, len(s.Params))
-	for i, present := range p {
-		if present {
-			reduced[i] = s.Params[i]
-		}
+	res := &State{Params: make([]*anyrnn.VecState, len(s.Params))}
+	for i, param := range s.Params {
+		res.Params[i] = param.Reduce(p).(*anyrnn.VecState)
 	}
-	return &State{
-		Creator:    s.Creator,
-		ParamSizes: s.ParamSizes,
-		Params:     reduced,
-	}
+	return res
 }
 
 // Expand inserts gradients.
 func (s *State) Expand(p anyrnn.PresentMap) anyrnn.StateGrad {
-	expanded := append([][]anyvec.Vector{}, s.Params...)
-	curPres := s.Present()
-	for i, present := range p {
-		if present && !curPres[i] {
-			for _, size := range s.ParamSizes {
-				vec := s.Creator.MakeVector(size)
-				expanded[i] = append(expanded[i], vec)
-			}
-		}
+	res := &State{Params: make([]*anyrnn.VecState, len(s.Params))}
+	for i, param := range s.Params {
+		res.Params[i] = param.Expand(p).(*anyrnn.VecState)
 	}
-	return &State{
-		Creator:    s.Creator,
-		ParamSizes: s.ParamSizes,
-		Params:     expanded,
-	}
+	return res
 }
 
-func (s *State) pool() [][]*anydiff.Var {
-	res := make([][]*anydiff.Var, len(s.Params))
-	for i, vecs := range s.Params {
-		if vecs == nil {
-			continue
-		}
-		for _, vec := range vecs {
-			p := anydiff.NewVar(vec)
-			res[i] = append(res[i], p)
-		}
+func (s *State) pool() []*anydiff.Var {
+	res := make([]*anydiff.Var, len(s.Params))
+	for i, packed := range s.Params {
+		res[i] = anydiff.NewVar(packed.Vector)
 	}
 	return res
 }
 
 type blockRes struct {
 	InPool   *anydiff.Var
-	NetPools [][]*anydiff.Var
+	NetPools []*anydiff.Var
 	OutVec   anyvec.Vector
 	OutState *State
 	AllRes   anydiff.MultiRes
@@ -346,14 +287,8 @@ func (b *blockRes) Vars() anydiff.VarSet {
 
 func (b *blockRes) Propagate(u anyvec.Vector, s anyrnn.StateGrad,
 	g anydiff.Grad) (anyvec.Vector, anyrnn.StateGrad) {
-	n := b.OutState.Present().NumPresent()
-	uSliceLen := u.Len() / n
 	allUpstream := make([]anyvec.Vector, len(b.AllRes.Outputs()))
-	vecsPerLane := len(allUpstream) / n
-	for i := 0; i < n; i++ {
-		uSlice := u.Slice(i*uSliceLen, (i+1)*uSliceLen)
-		allUpstream[i*vecsPerLane] = uSlice
-	}
+	allUpstream[0] = u
 	if s == nil {
 		for i, x := range allUpstream {
 			if x == nil {
@@ -363,16 +298,8 @@ func (b *blockRes) Propagate(u anyvec.Vector, s anyrnn.StateGrad,
 		}
 	} else {
 		sg := s.(*State)
-		present := sg.Present()
-		var i int
-		for lane, vecs := range sg.Params {
-			if !present[lane] {
-				continue
-			}
-			for j, vec := range vecs {
-				allUpstream[1+i*vecsPerLane+j] = vec
-			}
-			i++
+		for i, vecs := range sg.Params {
+			allUpstream[i+1] = vecs.Vector
 		}
 	}
 
@@ -385,41 +312,17 @@ func (b *blockRes) Propagate(u anyvec.Vector, s anyrnn.StateGrad,
 
 	b.AllRes.Propagate(allUpstream, g)
 
-	paramGrad := make([][]anyvec.Vector, len(b.NetPools))
+	paramGrad := make([]*anyrnn.VecState, len(b.NetPools))
 	for i, netPool := range b.NetPools {
-		if netPool == nil {
-			continue
-		}
-		paramGrad[i] = make([]anyvec.Vector, len(netPool))
-		for j, x := range netPool {
-			paramGrad[i][j] = g[x]
+		paramGrad[i] = &anyrnn.VecState{
+			Vector:     g[netPool],
+			PresentMap: b.OutState.Present(),
 		}
 	}
 
-	return g[b.InPool], &State{
-		Creator:    b.OutState.Creator,
-		ParamSizes: b.OutState.ParamSizes,
-		Params:     paramGrad,
-	}
+	return g[b.InPool], &State{Params: paramGrad}
 }
 
 func (b *blockRes) pools() []*anydiff.Var {
-	res := []*anydiff.Var{b.InPool}
-	for _, list := range b.NetPools {
-		for _, v := range list {
-			res = append(res, v)
-		}
-	}
-	return res
-}
-
-func splitRes(r anydiff.Res, n int) anydiff.MultiRes {
-	return anydiff.PoolFork(r, func(r anydiff.Res) anydiff.MultiRes {
-		chunkSize := r.Output().Len() / n
-		var reses []anydiff.Res
-		for i := 0; i < n; i++ {
-			reses = append(reses, anydiff.Slice(r, i*chunkSize, (i+1)*chunkSize))
-		}
-		return anydiff.Fuse(reses...)
-	})
+	return append([]*anydiff.Var{b.InPool}, b.NetPools...)
 }

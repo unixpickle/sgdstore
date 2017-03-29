@@ -41,6 +41,8 @@ func (n *Net) Apply(inBatch anydiff.Res, batchSize int) anydiff.Res {
 
 // InSize calculates the input size of the network using
 // the dimensions of the first layer.
+//
+// This is invariant to n.Num.
 func (n *Net) InSize() int {
 	if len(n.Parameters.Outputs()) < 2 {
 		panic("network cannot be empty")
