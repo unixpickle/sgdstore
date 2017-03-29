@@ -9,6 +9,7 @@ import (
 	"github.com/unixpickle/anynet"
 	"github.com/unixpickle/anynet/anyrnn"
 	"github.com/unixpickle/anyvec"
+	"github.com/unixpickle/anyvec/anyvec32"
 	"github.com/unixpickle/anyvec/anyvec64"
 )
 
@@ -48,6 +49,29 @@ func TestBlockGradients(t *testing.T) {
 		V: append(inVars, block.Parameters()...),
 	}
 	checker.FullCheck(t)
+}
+
+func BenchmarkBlock(b *testing.B) {
+	c := anyvec32.CurrentCreator()
+	block := LinearBlock(c, 512, 4, 4, 1, 0.1, 128, 256, 128)
+	startState := block.Start(8)
+	inVec := c.MakeVector(startState.Present().NumPresent() * 512)
+	anyvec.Rand(inVec, anyvec.Normal, nil)
+
+	b.Run("Forward", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			block.Step(startState, inVec)
+		}
+	})
+	b.Run("Backward", func(b *testing.B) {
+		upstream := inVec.Copy()
+		grad := anydiff.NewGrad(block.Parameters()...)
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			out := block.Step(startState, inVec)
+			out.Propagate(upstream, nil, grad)
+		}
+	})
 }
 
 // randomTestSequence is borrowed from
