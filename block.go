@@ -154,6 +154,7 @@ func (b *Block) Step(s anyrnn.State, in anyvec.Vector) anyrnn.Res {
 			func(newParams []anydiff.Res) anydiff.MultiRes {
 				net1 := *newNet
 				net1.Parameters = anydiff.Fuse(newParams...)
+				batchSize := gateOuts[3].Output().Len() / (net.InSize() * n)
 				applied := newNet.Apply(gateOuts[3], batchSize)
 				newReses := append([]anydiff.Res{applied}, newParams...)
 				return anydiff.Fuse(newReses...)
