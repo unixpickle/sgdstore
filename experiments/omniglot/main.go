@@ -14,6 +14,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, "Subcommands:")
 		fmt.Fprintln(os.Stderr, " train     train a new or existing model")
 		fmt.Fprintln(os.Stderr, " analysis  dump weight statistics")
+		fmt.Fprintln(os.Stderr, " accuracy  evaluate model")
 		fmt.Fprintln(os.Stderr)
 		os.Exit(1)
 	}
@@ -22,6 +23,8 @@ func main() {
 		Train(os.Args[2:])
 	case "analysis":
 		Analysis(os.Args[2:])
+	case "accuracy":
+		Accuracy(os.Args[2:])
 	default:
 		essentials.Die("unknown sub-command:", os.Args[1])
 	}
