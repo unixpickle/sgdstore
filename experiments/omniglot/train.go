@@ -92,7 +92,7 @@ func Train(args []string) {
 	sgd := &anysgd.SGD{
 		Gradienter:  trainer,
 		Fetcher:     trainer,
-		Transformer: &anysgd.Adam{},
+		Transformer: &anysgd.RMSProp{},
 		Rater:       anysgd.ConstRater(stepSize),
 		Samples:     samples,
 		BatchSize:   batchSize,

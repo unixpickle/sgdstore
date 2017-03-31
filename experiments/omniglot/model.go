@@ -19,13 +19,14 @@ func NewModel(name string, sgdSteps, outCount int) anyrnn.Block {
 	case "sgdstore":
 		return anyrnn.Stack{
 			normInput,
-			anyrnn.NewLSTM(c, 400+outCount, 384),
-			sgdstore.LinearBlock(c, 384, 6, 2, sgdSteps, 0.2, 128, 256, 128),
+			anyrnn.NewVanilla(c, 400+outCount, 384, anynet.Tanh),
+			anyrnn.NewVanilla(c, 384, 384, anynet.Tanh),
+			sgdstore.LinearBlock(c, 384, 16, 2, sgdSteps, 0.2, 32, 256, 32),
 			&anyrnn.LayerBlock{
 				Layer: anynet.Net{
-					anynet.NewFC(c, 256, 128),
+					anynet.NewFC(c, 64, 64),
 					anynet.Tanh,
-					anynet.NewFC(c, 128, outCount),
+					anynet.NewFC(c, 64, outCount),
 					anynet.LogSoftmax,
 				},
 			},
