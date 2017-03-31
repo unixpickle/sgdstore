@@ -1,7 +1,6 @@
 package main
 
 import (
-	"github.com/unixpickle/anydiff"
 	"github.com/unixpickle/anynet"
 	"github.com/unixpickle/anynet/anyrnn"
 	"github.com/unixpickle/anyvec/anyvec32"
@@ -20,24 +19,13 @@ func NewModel(name string, sgdSteps, outCount int) anyrnn.Block {
 	case "sgdstore":
 		return anyrnn.Stack{
 			normInput,
-			&anyrnn.Feedback{
-				InitOut: anydiff.NewVar(c.MakeVector(512)),
-				Mixer:   anynet.ConcatMixer{},
-				Block: anyrnn.Stack{
-					&anyrnn.LayerBlock{
-						Layer: anynet.Net{
-							anynet.NewFC(c, 400+outCount+512, 512),
-							anynet.Tanh,
-							anynet.NewFC(c, 512, 512),
-							anynet.Tanh,
-						},
-					},
-					sgdstore.LinearBlock(c, 512, 4, 4, sgdSteps, 0.1, 128, 256, 128),
-				},
-			},
+			anyrnn.NewLSTM(c, 400+outCount, 384),
+			sgdstore.LinearBlock(c, 384, 6, 2, sgdSteps, 0.2, 128, 256, 128),
 			&anyrnn.LayerBlock{
 				Layer: anynet.Net{
-					anynet.NewFC(c, 512, outCount),
+					anynet.NewFC(c, 256, 128),
+					anynet.Tanh,
+					anynet.NewFC(c, 128, outCount),
 					anynet.LogSoftmax,
 				},
 			},
