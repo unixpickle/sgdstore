@@ -43,6 +43,18 @@ func NewModel(name string, sgdSteps, outCount int) anyrnn.Block {
 				},
 			},
 		}
+	case "vanilla":
+		return anyrnn.Stack{
+			normInput,
+			anyrnn.NewVanilla(c, 400+outCount, 384, anynet.Tanh),
+			anyrnn.NewVanilla(c, 384, 384, anynet.Tanh),
+			&anyrnn.LayerBlock{
+				Layer: anynet.Net{
+					anynet.NewFC(c, 384, outCount),
+					anynet.LogSoftmax,
+				},
+			},
+		}
 	default:
 		essentials.Die("unknown model:", name)
 		panic("unreachable")
