@@ -1,6 +1,6 @@
 # sgdstore
 
-This is a memory-augmented neural network that uses a neural network as a storage device. Particularly, a *controller network* provides training examples for a *storage network* at every timestep. The *storage network* is trained on these samples with SGD at every timestep (in a differentiable manner)`. The controller can then query the storage network by feeding it inputs and seeing the corresponding outputs. The end result is that the storage network serves as a memory bank which is "written to" via SGD.
+This is a memory-augmented neural network that uses a neural network as a storage device. Particularly, a *controller network* provides training examples for a *storage network* at every timestep. The *storage network* is trained on these samples with SGD at every timestep (in a differentiable manner). The controller can then query the storage network by feeding it inputs and seeing the corresponding outputs. The end result is that the storage network serves as a memory bank which is "written to" via SGD.
 
 # Hypotheses
 
