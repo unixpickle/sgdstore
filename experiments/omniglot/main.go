@@ -15,6 +15,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, " train     train a new or existing model")
 		fmt.Fprintln(os.Stderr, " analysis  dump weight statistics")
 		fmt.Fprintln(os.Stderr, " accuracy  evaluate model")
+		fmt.Fprintln(os.Stderr, " debug     add debug layers to model")
 		fmt.Fprintln(os.Stderr)
 		os.Exit(1)
 	}
@@ -25,6 +26,8 @@ func main() {
 		Analysis(os.Args[2:])
 	case "accuracy":
 		Accuracy(os.Args[2:])
+	case "debug":
+		Debug(os.Args[2:])
 	default:
 		essentials.Die("unknown sub-command:", os.Args[1])
 	}
