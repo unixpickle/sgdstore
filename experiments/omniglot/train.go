@@ -35,7 +35,8 @@ func Train(args []string) {
 	fs.StringVar(&trainingPath, "training", "", "training data directory")
 	fs.StringVar(&testingPath, "testing", "", "testing data directory")
 	fs.StringVar(&modelPath, "out", "model_out", "model output path")
-	fs.StringVar(&modelType, "model", "sgdstore", "model type (sgdstore, lstm, or vanilla)")
+	fs.StringVar(&modelType, "model", "sgdstore",
+		"model type (sgdstore, lstm, parasgdstore, or vanilla)")
 	fs.Float64Var(&stepSize, "step", 0.001, "SGD step size")
 	fs.IntVar(&sgdSteps, "steps", 1, "steps per sgdstore")
 	fs.IntVar(&batchSize, "batch", 16, "SGD batch size")

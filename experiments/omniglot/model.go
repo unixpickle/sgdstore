@@ -30,6 +30,27 @@ func NewModel(name string, sgdSteps, outCount int) anyrnn.Block {
 				},
 			},
 		}
+	case "parasgdstore":
+		return anyrnn.Stack{
+			normInputLayer(c, outCount, numPixels),
+			anyrnn.NewVanilla(c, numPixels+outCount, 384, anynet.Tanh),
+			anyrnn.NewVanilla(c, 384, 384, anynet.Tanh),
+			&anyrnn.Parallel{
+				Block1: &anyrnn.LayerBlock{Layer: anynet.Net{}},
+				Block2: sgdstore.LinearBlock(c, 384, 16, 2, sgdSteps, 0.2, 32, 256, 32),
+				Mixer: &anynet.AddMixer{
+					In1: anynet.NewFC(c, 384, 64),
+					In2: anynet.NewFC(c, 64, 64),
+					Out: anynet.Tanh,
+				},
+			},
+			&anyrnn.LayerBlock{
+				Layer: anynet.Net{
+					anynet.NewFC(c, 64, outCount),
+					anynet.LogSoftmax,
+				},
+			},
+		}
 	case "lstm":
 		return anyrnn.Stack{
 			normInputLayer(c, outCount, numPixels),
