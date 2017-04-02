@@ -94,11 +94,11 @@ func normInputLayer(c anyvec.Creator, numOut, numPixels int) anyrnn.Block {
 		Scalers: anydiff.NewVar(c.MakeVector(numPixels + numOut)),
 		Biases:  anydiff.NewVar(c.MakeVector(numPixels + numOut)),
 	}
-	affine.Scalers.Vector.AddScaler(c.MakeNumeric(1))
+	affine.Scalers.Vector.AddScaler(c.MakeNumeric(4))
 
-	modified := affine.Scalers.Vector.Slice(0, numPixels)
+	modified := affine.Scalers.Vector.Slice(numPixels, numPixels+numOut)
 	modified.Scale(c.MakeNumeric(4))
-	affine.Scalers.Vector.SetSlice(0, modified)
+	affine.Scalers.Vector.SetSlice(numPixels, modified)
 
 	modified = affine.Biases.Vector.Slice(0, numPixels)
 	modified.AddScaler(c.MakeNumeric(-4 * 0.92))
