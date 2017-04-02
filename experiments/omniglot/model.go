@@ -1,8 +1,10 @@
 package main
 
 import (
+	"github.com/unixpickle/anydiff"
 	"github.com/unixpickle/anynet"
 	"github.com/unixpickle/anynet/anyrnn"
+	"github.com/unixpickle/anyvec"
 	"github.com/unixpickle/anyvec/anyvec32"
 	"github.com/unixpickle/essentials"
 	"github.com/unixpickle/sgdstore"
@@ -10,16 +12,13 @@ import (
 
 func NewModel(name string, sgdSteps, outCount int) anyrnn.Block {
 	c := anyvec32.CurrentCreator()
-
-	normInput := &anyrnn.LayerBlock{
-		Layer: anynet.NewAffine(c, 4, -0.92*4),
-	}
+	numPixels := ImageSize * ImageSize
 
 	switch name {
 	case "sgdstore":
 		return anyrnn.Stack{
-			normInput,
-			anyrnn.NewVanilla(c, 400+outCount, 384, anynet.Tanh),
+			normInputLayer(c, outCount, numPixels),
+			anyrnn.NewVanilla(c, numPixels+outCount, 384, anynet.Tanh),
 			anyrnn.NewVanilla(c, 384, 384, anynet.Tanh),
 			sgdstore.LinearBlock(c, 384, 16, 2, sgdSteps, 0.2, 32, 256, 32),
 			&anyrnn.LayerBlock{
@@ -33,8 +32,8 @@ func NewModel(name string, sgdSteps, outCount int) anyrnn.Block {
 		}
 	case "lstm":
 		return anyrnn.Stack{
-			normInput,
-			anyrnn.NewLSTM(c, 400+outCount, 384),
+			normInputLayer(c, outCount, numPixels),
+			anyrnn.NewLSTM(c, numPixels+outCount, 384),
 			anyrnn.NewLSTM(c, 384, 384).ScaleInWeights(c.MakeNumeric(2)),
 			&anyrnn.LayerBlock{
 				Layer: anynet.Net{
@@ -45,8 +44,8 @@ func NewModel(name string, sgdSteps, outCount int) anyrnn.Block {
 		}
 	case "vanilla":
 		return anyrnn.Stack{
-			normInput,
-			anyrnn.NewVanilla(c, 400+outCount, 384, anynet.Tanh),
+			normInputLayer(c, outCount, numPixels),
+			anyrnn.NewVanilla(c, numPixels+outCount, 384, anynet.Tanh),
 			anyrnn.NewVanilla(c, 384, 384, anynet.Tanh),
 			&anyrnn.LayerBlock{
 				Layer: anynet.Net{
@@ -67,4 +66,22 @@ func CountParams(b anyrnn.Block) int {
 		res += p.Vector.Len()
 	}
 	return res
+}
+
+func normInputLayer(c anyvec.Creator, numOut, numPixels int) anyrnn.Block {
+	affine := &anynet.Affine{
+		Scalers: anydiff.NewVar(c.MakeVector(numPixels + numOut)),
+		Biases:  anydiff.NewVar(c.MakeVector(numPixels + numOut)),
+	}
+	affine.Scalers.Vector.AddScaler(c.MakeNumeric(1))
+
+	modified := affine.Scalers.Vector.Slice(0, numPixels)
+	modified.Scale(4)
+	affine.Scalers.Vector.SetSlice(0, modified)
+
+	modified = affine.Biases.Vector.Slice(0, numPixels)
+	modified.AddScaler(-4 * 0.92)
+	affine.Biases.Vector.SetSlice(0, modified)
+
+	return &anyrnn.LayerBlock{Layer: affine}
 }
