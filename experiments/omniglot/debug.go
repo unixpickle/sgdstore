@@ -40,6 +40,9 @@ func Debug(args []string) {
 
 	stack := model.(anyrnn.Stack)
 	for _, layer := range stack {
+		if par, ok := layer.(*anyrnn.Parallel); ok {
+			layer = par.Block2
+		}
 		if block, ok := layer.(*sgdstore.Block); ok {
 			if logStepSize {
 				net := block.StepSize.(anynet.Net)
