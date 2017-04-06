@@ -68,6 +68,35 @@ Also, the model in the above experiments were a single MLP with 256 hidden units
 
 ![Memory structure comparison plot](plot/plot_mem.png)
 
+Here are the accuracy measurements for the "deep memory" model:
+
+<table>
+  <tr>
+    <th>Set</th>
+    <th>1<sup>st</sup></th>
+    <th>2<sup>nd</sup></th>
+    <th>3<sup>rd</sup></th>
+    <th>10<sup>th</sup></th>
+    <th>11<sup>th</sup></th>
+  </tr>
+  <tr>
+    <td>Eval</td>
+    <td>11.4%</td>
+    <td>81.7%</td>
+    <td>86.5%</td>
+    <td>91.2%</td>
+    <td>91.0%</td>
+  </tr>
+  <tr>
+    <td>Train</td>
+    <td>13.4%</td>
+    <td>88.6%</td>
+    <td>92.7%</td>
+    <td>95.6%</td>
+    <td>96.8%</td>
+  </tr>
+</table>
+
 # A note on LSTM results
 
 I have found that I can get much better LSTM results than the ones reported in *Santoro et al.*. They stop training after 100,000 episodes, which seems arbitrary (almost like it was chosen to make their model look good, since it learns faster). I don't want to confuse learning speed with model capacity, which *Santoro et al.* seems to do.
