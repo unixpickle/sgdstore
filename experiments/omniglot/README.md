@@ -64,7 +64,7 @@ The above experiments were with a learning rate of 0.0003. From the following gr
 
 ![Learning rate comparison plot](plot/plot_lr.png)
 
-Also, the model in the above experiments were a single MLP with 256 hidden units and two read heads. By "two read heads", I mean that the controller got to run two samples through the memory network. Here are two variations: one with "deep memory" (two layers of 256 units), another with four read heads. It is clear that deep memory helps in the long run, perhaps just due to the extra capacity:
+Also, the memory modules in the above experiments were single-layer MLPs with 256 hidden units and two read heads. By "two read heads", I mean that the controller got to run two samples through the memory network. Here are two variations: one with "deep memory" (two layers of 256 units), another with four read heads. It is clear that deep memory helps in the long run, perhaps just due to the extra capacity:
 
 ![Memory structure comparison plot](plot/plot_mem.png)
 
