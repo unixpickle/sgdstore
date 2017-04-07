@@ -63,7 +63,7 @@ func learnerBlock(name string, sgdSteps, numFeatures, numOut int) anyrnn.Block {
 
 func featureBlock(numFeatures, blockSize int) anyrnn.Block {
 	c := anyvec32.CurrentCreator()
-	return anyrnn.NewLSTM(c, blockSize, numFeatures)
+	return anyrnn.NewLSTM(c, blockSize, numFeatures).ScaleInWeights(c.MakeNumeric(7))
 }
 
 func normInputLayer(c anyvec.Creator, numFeatures, numOut int) anyrnn.Block {
