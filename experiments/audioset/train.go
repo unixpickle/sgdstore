@@ -73,6 +73,8 @@ func Train(args []string) {
 	if err := serializer.LoadAny(featureNetPath, &features); err != nil {
 		log.Println("Creating new feature net...")
 		features = featureBlock(audioFeatureSize, pcmChunkSize)
+	} else {
+		log.Println("Loaded feature net.")
 	}
 
 	allSamples, err := metaset.ReadSet(dataDir, dataCSV)
