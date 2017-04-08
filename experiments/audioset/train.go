@@ -103,6 +103,8 @@ func Train(args []string) {
 		Average:    true,
 	}
 
+	valBatches := fetchEvalBatches(*trainer, eval, batchSize)
+
 	var iter int
 	sgd := &anysgd.SGD{
 		Fetcher:     trainer,
@@ -113,13 +115,8 @@ func Train(args []string) {
 		BatchSize:   batchSize,
 		StatusFunc: func(b anysgd.Batch) {
 			if iter%4 == 0 {
-				valTrainer := *trainer
-				valTrainer.Set = eval
-				batch, err := valTrainer.Fetch(anysgd.LengthSampleList(batchSize))
-				if err != nil {
-					essentials.Die(err)
-				}
-				valCost := anyvec.Sum(valTrainer.TotalCost(batch).Output())
+				batch := <-valBatches
+				valCost := anyvec.Sum(trainer.TotalCost(batch).Output())
 				log.Printf("iter %d: cost=%v validation=%v", iter, trainer.LastCost,
 					valCost)
 			} else {
@@ -147,4 +144,20 @@ func readEvalClasses(path string) []string {
 		essentials.Die(err)
 	}
 	return strings.Fields(string(data))
+}
+
+func fetchEvalBatches(t metaset.Trainer, set metaset.Set, size int) <-chan anysgd.Batch {
+	res := make(chan anysgd.Batch, 1)
+	go func() {
+		defer close(res)
+		t.Set = set
+		for {
+			batch, err := t.Fetch(anysgd.LengthSampleList(size))
+			if err != nil {
+				essentials.Die(err)
+			}
+			res <- batch
+		}
+	}()
+	return res
 }
