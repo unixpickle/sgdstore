@@ -15,6 +15,7 @@ import (
 	"github.com/unixpickle/anynet/anysgd"
 	"github.com/unixpickle/anyvec"
 	"github.com/unixpickle/anyvec/anyvec32"
+	"github.com/unixpickle/audioset"
 	"github.com/unixpickle/audioset/metaset"
 	"github.com/unixpickle/essentials"
 	"github.com/unixpickle/rip"
@@ -77,12 +78,12 @@ func Train(args []string) {
 		log.Println("Loaded feature net.")
 	}
 
-	allSamples, err := metaset.ReadSet(dataDir, dataCSV)
+	allSamples, err := audioset.ReadSet(dataDir, dataCSV)
 	if err != nil {
 		essentials.Die(err)
 	}
 
-	training, eval := allSamples.Split(readEvalClasses(evalClassPath))
+	training, eval := metaset.Split(allSamples, readEvalClasses(evalClassPath))
 
 	log.Printf("Got %d samples: %d training, %d eval", len(allSamples), len(training),
 		len(eval))
@@ -146,7 +147,7 @@ func readEvalClasses(path string) []string {
 	return strings.Fields(string(data))
 }
 
-func fetchEvalBatches(t metaset.Trainer, set metaset.Set, size int) <-chan anysgd.Batch {
+func fetchEvalBatches(t metaset.Trainer, set audioset.Set, size int) <-chan anysgd.Batch {
 	res := make(chan anysgd.Batch, 1)
 	go func() {
 		defer close(res)
