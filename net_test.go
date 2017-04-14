@@ -43,7 +43,7 @@ func TestNetTrain(t *testing.T) {
 	target := anydiff.NewVar(targetVec)
 
 	stepSize := c.MakeVector(1)
-	stepSize.AddScaler(c.MakeNumeric(0.1))
+	stepSize.AddScalar(c.MakeNumeric(0.1))
 
 	trained := virtualNet.Train(input, target, anydiff.NewConst(stepSize), 4, 2)
 	actual := trained.Parameters.Outputs()
@@ -136,7 +136,7 @@ func BenchmarkNetwork(b *testing.B) {
 	anyvec.Rand(target.Vector, anyvec.Normal, nil)
 
 	stepSize := anydiff.NewConst(c.MakeVector(1))
-	stepSize.Vector.AddScaler(float32(0.1))
+	stepSize.Vector.AddScalar(float32(0.1))
 
 	b.Run("Forward", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
