@@ -21,7 +21,8 @@ func learnerBlock(name string, sgdSteps, numFeatures, numOut int) anyrnn.Block {
 			inLayer,
 			anyrnn.NewVanilla(c, numFeatures+numOut, 384, anynet.Tanh),
 			anyrnn.NewVanilla(c, 384, 384, anynet.Tanh),
-			sgdstore.LinearBlock(c, 384, 16, 2, sgdSteps, 0.2, 32, 256, 32),
+			sgdstore.LinearBlock(c, 384, 16, 2, sgdSteps, 0.2,
+				sgdstore.Tanh, 32, 256, 32),
 			&anyrnn.LayerBlock{
 				Layer: anynet.Net{
 					anynet.NewFC(c, 64, 64),

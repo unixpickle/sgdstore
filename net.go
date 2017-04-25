@@ -9,7 +9,7 @@ import (
 // NetBatch is a batch of dynamic feed-forward multi-layer
 // perceptrons.
 //
-// Each layer is implicitly followed by a tanh.
+// Each layer is implicitly followed by an activation.
 type Net struct {
 	// Parameters stores the weights and biases of the
 	// network.
@@ -23,6 +23,9 @@ type Net struct {
 
 	// Num is the number of networks in the batch.
 	Num int
+
+	// Activation is the activation function.
+	Activation Activation
 }
 
 // Apply applies the networks to a batch of input batches,
@@ -33,7 +36,7 @@ func (n *Net) Apply(inBatch anydiff.Res, batchSize int) anydiff.Res {
 			panic("mismatching bias and weight count")
 		}
 		for i := 0; i < len(params); i += 2 {
-			inBatch = applyLayer(params[i], params[i+1], inBatch, batchSize, n.Num)
+			inBatch = n.applyLayer(params[i], params[i+1], inBatch, batchSize, n.Num)
 		}
 		return inBatch
 	})
@@ -78,7 +81,7 @@ func (n *Net) Train(inBatch, target, stepSize anydiff.Res, batchSize,
 // caller.
 func (n *Net) step(inBatch, target, stepSize anydiff.Res, batchSize int) *Net {
 	newParams := anydiff.PoolMulti(n.Parameters, func(params []anydiff.Res) anydiff.MultiRes {
-		grad := applyBackprop(params, inBatch, target, batchSize, n.Num)
+		grad := n.applyBackprop(params, inBatch, target, batchSize, n.Num)
 		return anydiff.PoolMulti(grad, func(grads []anydiff.Res) anydiff.MultiRes {
 			var newParams []anydiff.Res
 			for i, g := range grads[1:] {
@@ -97,17 +100,18 @@ func (n *Net) step(inBatch, target, stepSize anydiff.Res, batchSize int) *Net {
 }
 
 // applyLayer applies a single layer.
-func applyLayer(weights, biases, inBatch anydiff.Res, batchSize, numNets int) anydiff.Res {
+func (n *Net) applyLayer(weights, biases, inBatch anydiff.Res, batchSize,
+	numNets int) anydiff.Res {
 	inMat, weightMat := layerMats(weights, biases, inBatch, batchSize, numNets)
 	inBatch = anydiff.BatchedMatMul(false, true, inMat, weightMat).Data
-	return anydiff.Tanh(batchedAddRepeated(inBatch, biases, numNets))
+	return n.Activation.Forward(batchedAddRepeated(inBatch, biases, numNets))
 }
 
 // applyBackprop applies the networks and performs
 // backward-propagation.
 // The result is [inGrad, param1Grad, param2Grad, ...].
 // The caller should pool the input parameters.
-func applyBackprop(params []anydiff.Res, in, target anydiff.Res,
+func (n *Net) applyBackprop(params []anydiff.Res, in, target anydiff.Res,
 	batchSize, numNets int) anydiff.MultiRes {
 	if len(params) == 0 {
 		scaler := target.Output().Creator().MakeNumeric(
@@ -122,13 +126,13 @@ func applyBackprop(params []anydiff.Res, in, target anydiff.Res,
 	inMat, weightMat := layerMats(params[0], params[1], in, batchSize, numNets)
 	matOut := anydiff.BatchedMatMul(false, true, inMat, weightMat).Data
 	biasOut := batchedAddRepeated(matOut, params[1], numNets)
-	tanhOut := anydiff.Tanh(biasOut)
-	return anydiff.PoolFork(tanhOut, func(tanhOut anydiff.Res) anydiff.MultiRes {
-		nextOut := applyBackprop(params[2:], tanhOut, target, batchSize, numNets)
+	actOut := n.Activation.Forward(biasOut)
+	return anydiff.PoolFork(actOut, func(actOut anydiff.Res) anydiff.MultiRes {
+		nextOut := n.applyBackprop(params[2:], actOut, target, batchSize, numNets)
 		return anydiff.PoolMulti(nextOut, func(x []anydiff.Res) anydiff.MultiRes {
 			outGrad := x[0]
 			laterGrads := x[1:]
-			pg := anydiff.Mul(anydiff.Complement(anydiff.Square(tanhOut)), outGrad)
+			pg := n.Activation.Backward(actOut, outGrad)
 			return anydiff.PoolFork(pg, func(pg anydiff.Res) anydiff.MultiRes {
 				productGrad := &anydiff.MatrixBatch{
 					Data: pg,

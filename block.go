@@ -20,6 +20,7 @@ func init() {
 // Block is an RNN block that uses a Net as its memory.
 type Block struct {
 	InitParams []*anydiff.Var
+	Activation Activation
 
 	// Gates which transform the input into various vectors
 	// used to train and query the current Net.
@@ -58,7 +59,7 @@ type Block struct {
 //     queryBatch * layerSizes[len(layerSizes)-1]
 //
 func LinearBlock(c anyvec.Creator, blockIn, trainBatch, queryBatch, numSteps int,
-	lrBias float64, layerSizes ...int) *Block {
+	lrBias float64, activation Activation, layerSizes ...int) *Block {
 	if len(layerSizes) < 2 {
 		panic("not enough layer sizes")
 	} else if trainBatch < 1 || queryBatch < 1 {
@@ -69,14 +70,15 @@ func LinearBlock(c anyvec.Creator, blockIn, trainBatch, queryBatch, numSteps int
 		TrainInput: anynet.NewFC(c, blockIn, trainBatch*layerSizes[0]),
 		TrainTarget: anynet.Net{
 			anynet.NewFC(c, blockIn, trainBatch*layerSizes[len(layerSizes)-1]),
-			anynet.Tanh,
+			activation.Layer(),
 		},
 		StepSize: anynet.Net{
 			anynet.NewFC(c, blockIn, 1).AddBias(c.MakeNumeric(math.Log(lrBias))),
 			anynet.Exp,
 		},
-		Query: anynet.NewFC(c, blockIn, queryBatch*layerSizes[0]),
-		Steps: numSteps,
+		Query:      anynet.NewFC(c, blockIn, queryBatch*layerSizes[0]),
+		Steps:      numSteps,
+		Activation: activation,
 	}
 
 	layerSize := layerSizes[0]
@@ -147,6 +149,7 @@ func (b *Block) Step(s anyrnn.State, in anyvec.Vector) anyrnn.Res {
 		net := &Net{
 			Parameters: anydiff.Fuse(poolReses...),
 			Num:        n,
+			Activation: b.Activation,
 		}
 		batchSize := gateOuts[0].Output().Len() / (net.InSize() * n)
 		newNet := net.Train(gateOuts[0], gateOuts[1], gateOuts[2], batchSize, b.Steps)
